@@ -1,0 +1,25 @@
+# 密钥与私密配置
+secrets.yaml
+.env
+*.env
+
+# 运行时数据（下载文件、session、日志）
+data/
+*.session
+*.log
+logs/
+
+# 编译产物
+bin/
+dist/
+tg-media-bot
+tg-media-bot-linux-amd64
+tg-media-bot-windows-amd64.exe
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+
+# 本地实际配置（勿提交）
+config.yaml

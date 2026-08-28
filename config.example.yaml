@@ -1,0 +1,75 @@
+# tg-media-bot 配置模板（可提交 git，复制为本地 config.yaml 使用）
+# 密钥类配置请放 secrets.yaml（已 git 忽略）
+
+bot:
+  # MTProto 登录态持久化文件（重启不掉线）
+  session_file: data/session
+  # 下载临时目录
+  download_dir: data/downloads
+  # 同时下载数（并发上限，防风控）
+  max_concurrent_downloads: 2
+  # 单文件下载超时（分钟）
+  download_timeout_min: 120
+  # 选择推送路径的超时（分钟），超时走默认路由
+  path_timeout_min: 5
+  # 确认文件名的超时（分钟），超时用识别出的名字
+  name_timeout_min: 5
+  # 网络代理，留空=直连；支持 http:// https:// socks5://（可带认证 http://user:***@host:port）
+  proxy: "http://127.0.0.1:7890"
+  # 文件日志（按天滚动，/log 命令读取），留空=仅控制台
+  log_file: data/logs/tgmb.log
+  # 下载历史文件（/history 命令读取）
+  history_file: data/history.jsonl
+
+# 推送目标定义
+# type: local=本机移动  rsync=推到远端服务器（密码放 secrets.yaml 的 ssh_passwords，或配 ssh_key）
+targets:
+  飞机:
+    type: rsync
+    host: "192.168.1.100"
+    port: 22
+    user: root
+    path: /path/to/your/搜索
+    ssh_key: ""
+  电视剧:
+    type: rsync
+    host: "192.168.1.100"
+    port: 22
+    user: root
+    path: /path/to/your/电视剧
+    ssh_key: ""
+
+# 路由规则已移除：所有任务都手动选择推送目标
+# 路径选择超时后自动推送到的目标（兜底）
+default_target: 电视剧
+
+# 重命名规则
+rename:
+  # 集数模式识别（按顺序尝试），template 占位符:
+  #   {name}剧名 {season}季 {episode}集 {quality}质量 {ext}扩展名
+  patterns:
+    - regex: '(?i)S(\d{1,2})E(\d{1,3})'
+      template: '{name}.S{season}E{episode}{quality}.{ext}'
+    - regex: '(?i)S(\d{1,2})[ -]?第?(\d{1,3})[集话]'
+      template: '{name}.S{season}E{episode}{quality}.{ext}'
+    - regex: '第(\d{1,4})[集话]'
+      template: '{name}.第{episode}集{quality}.{ext}'
+  # 从文件名中清洗掉的垃圾（正则）
+  strip:
+    - 'www\.[a-z0-9.-]+\.(com|cn|net|org|tv|cc|xyz)'
+    - '【[^】]*】'
+    - '@[a-zA-Z0-9_]+'
+    - '\[[^\[\]]*\]\s*'
+  # 识别后保留的质量标签（大写不区分）
+  quality:
+    - '1080p'
+    - '720p'
+    - '4K'
+    - '2160p'
+    - 'HDR'
+    - '蓝光'
+    - 'BluRay'
+    - 'WEB-DL'
+    - 'WEBRip'
+  # 兜底策略: date_prefix=原名+日期前缀（防冲突）
+  fallback: date_prefix

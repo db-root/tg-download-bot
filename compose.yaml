@@ -1,0 +1,23 @@
+# tg-media-bot Docker Compose 部署
+# 用法：
+#   1. 准备配置：cp config.example.yaml config.yaml && 编辑 secrets.yaml（密钥）
+#   2. 构建镜像：docker compose build
+#   3. 启动：docker compose up -d
+#   4. 看日志：docker compose logs -f
+
+services:
+  tg-media-bot:
+    image: tg-media-bot:0.1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tg-media-bot
+    restart: unless-stopped
+    volumes:
+      # 配置（只读挂载；secrets.yaml 含密钥，勿提交 git）
+      - ./config.yaml:/app/config.yaml:ro
+      - ./secrets.yaml:/app/secrets.yaml:ro
+      # 运行时数据：session/下载/日志/历史
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
