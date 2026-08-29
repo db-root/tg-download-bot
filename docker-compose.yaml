@@ -1,16 +1,17 @@
 # tg-download-bot Docker Compose 部署
 # 用法：
 #   1. 准备配置：cp config.example.yaml config.yaml && 编辑 secrets.yaml（密钥）
-#   2. 构建镜像：docker compose build
-#   3. 启动：docker compose up -d
-#   4. 看日志：docker compose logs -f
+#   2. 启动（自动从 Docker Hub 拉取镜像）：docker compose up -d
+#   3. 看日志：docker compose logs -f
+# 离线/内网环境：docker load < tg-download-bot-0.1.0.tar.gz 后，去掉下面 build 段的注释即可
 
 services:
   tg-download-bot:
-    image: tg-download-bot:0.1.0
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: bin12121/tg-download-bot:latest
+    # 如需本地构建（改过代码时）：
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     container_name: tg-download-bot
     restart: unless-stopped
     volumes:

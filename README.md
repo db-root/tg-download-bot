@@ -73,13 +73,15 @@ go build -o tg-download-bot ./cmd/tg-download-bot
 
 ### Docker 部署（推荐）
 
+镜像已发布到 Docker Hub：`bin12121/tg-download-bot:latest`（含 rsync/sshpass/ssh）
+
 ```bash
 # 1. 准备配置（首次）
 cp config.example.yaml config.yaml
 vi config.yaml && vi secrets.yaml
 
-# 2. 构建 + 启动
-docker compose up -d --build
+# 2. 启动（自动拉取镜像）
+docker compose up -d
 
 # 3. 查看日志
 docker compose logs -f
@@ -89,7 +91,7 @@ docker compose logs -f
 - 配置只读挂载，改配置后 `docker compose restart`
 - 数据（session/下载/日志/历史）挂载在 `./data`
 - 配置只读挂载，改配置后 `docker compose restart`
-- 镜像已含 rsync/sshpass/ssh，远端推送开箱即用
+- 镜像已含 rsync/sshpass/ssh，远端推送开箱即用（Docker Hub: `bin12121/tg-download-bot:latest`）
 
 > ⚠️ **本地运行与 Docker 二选一**：两种方式都是 bot 长连接，同时跑会互相抢占消息（被踢下线）。用 Docker 前先停掉本地进程（`pkill -x tg-download-bot`）。
 
