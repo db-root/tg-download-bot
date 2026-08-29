@@ -1,4 +1,4 @@
-# tg-media-bot 配置模板（可提交 git，复制为本地 config.yaml 使用）
+# tg-download-bot 配置模板（可提交 git，复制为本地 config.yaml 使用）
 # 密钥类配置请放 secrets.yaml（已 git 忽略）
 
 bot:

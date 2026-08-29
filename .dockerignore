@@ -4,4 +4,4 @@ data/
 config.yaml
 secrets.yaml
 *.log
-tg-media-bot
+tg-download-bot

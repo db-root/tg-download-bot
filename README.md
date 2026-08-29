@@ -1,4 +1,4 @@
-# tg-media-bot
+# tg-download-bot
 
 Telegram 媒体下载机器人：把群里的视频/图片/文件**转发给 bot**，交互式确认（下载类型 + 推送路径 + 文件名）后自动下载，并推送到本机目录或远端服务器（rsync，支持密码/密钥认证）。
 
@@ -66,9 +66,9 @@ vi secrets.yaml    # 填 api_id/api_hash/bot_token/SSH密码
 ### 本地直接运行
 
 ```bash
-go build -o tg-media-bot ./cmd/tg-media-bot
-./tg-media-bot                        # 默认读 ./config.yaml
-./tg-media-bot -config /path/config.yaml
+go build -o tg-download-bot ./cmd/tg-download-bot
+./tg-download-bot                        # 默认读 ./config.yaml
+./tg-download-bot -config /path/config.yaml
 ```
 
 ### Docker 部署（推荐）
@@ -91,7 +91,7 @@ docker compose logs -f
 - 配置只读挂载，改配置后 `docker compose restart`
 - 镜像已含 rsync/sshpass/ssh，远端推送开箱即用
 
-> ⚠️ **本地运行与 Docker 二选一**：两种方式都是 bot 长连接，同时跑会互相抢占消息（被踢下线）。用 Docker 前先停掉本地进程（`pkill -x tg-media-bot`）。
+> ⚠️ **本地运行与 Docker 二选一**：两种方式都是 bot 长连接，同时跑会互相抢占消息（被踢下线）。用 Docker 前先停掉本地进程（`pkill -x tg-download-bot`）。
 
 ## 自动清理（data 目录）
 
@@ -110,7 +110,7 @@ docker compose logs -f
 ## 目录结构
 
 ```
-cmd/tg-media-bot/   入口
+cmd/tg-download-bot/   入口
 internal/
   config/           YAML 配置加载（config + secrets 分离）
   bot/              bot 接入 + 交互流程 + 任务流转 + 命令

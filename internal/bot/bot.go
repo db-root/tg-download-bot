@@ -23,13 +23,13 @@ import (
 	"github.com/gotd/td/telegram/dcs"
 	"github.com/gotd/td/tg"
 
-	"tg-media-bot/internal/config"
-	"tg-media-bot/internal/downloader"
-	"tg-media-bot/internal/history"
-	"tg-media-bot/internal/naming"
-	"tg-media-bot/internal/proxy"
-	"tg-media-bot/internal/router"
-	"tg-media-bot/internal/task"
+	"tg-download-bot/internal/config"
+	"tg-download-bot/internal/downloader"
+	"tg-download-bot/internal/history"
+	"tg-download-bot/internal/naming"
+	"tg-download-bot/internal/proxy"
+	"tg-download-bot/internal/router"
+	"tg-download-bot/internal/task"
 )
 
 // Bot 机器人主体

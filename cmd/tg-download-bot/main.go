@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"tg-media-bot/internal/bot"
-	"tg-media-bot/internal/config"
+	"tg-download-bot/internal/bot"
+	"tg-download-bot/internal/config"
 )
 
 func main() {

@@ -12,9 +12,9 @@ logs/
 # 编译产物
 bin/
 dist/
-/tg-media-bot
-/tg-media-bot-linux-amd64
-/tg-media-bot-windows-amd64.exe
+/tg-download-bot
+/tg-download-bot-linux-amd64
+/tg-download-bot-windows-amd64.exe
 
 # IDE / 系统
 .idea/

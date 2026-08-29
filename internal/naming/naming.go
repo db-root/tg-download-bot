@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"tg-media-bot/internal/config"
+	"tg-download-bot/internal/config"
 )
 
 // Source 命名信息源

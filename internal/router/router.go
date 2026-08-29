@@ -1,7 +1,7 @@
 package router
 
 import (
-	"tg-media-bot/internal/config"
+	"tg-download-bot/internal/config"
 )
 
 // Router 目标路由：仅提供目标查询与默认目标（来源分流已移除）

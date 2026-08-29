@@ -1,4 +1,4 @@
-# tg-media-bot Docker Compose 部署
+# tg-download-bot Docker Compose 部署
 # 用法：
 #   1. 准备配置：cp config.example.yaml config.yaml && 编辑 secrets.yaml（密钥）
 #   2. 构建镜像：docker compose build
@@ -6,12 +6,12 @@
 #   4. 看日志：docker compose logs -f
 
 services:
-  tg-media-bot:
-    image: tg-media-bot:0.1.0
+  tg-download-bot:
+    image: tg-download-bot:0.1.0
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: tg-media-bot
+    container_name: tg-download-bot
     restart: unless-stopped
     volumes:
       # 配置（只读挂载；secrets.yaml 含密钥，勿提交 git）

@@ -4,7 +4,7 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o tg-media-bot ./cmd/tg-media-bot
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o tg-download-bot ./cmd/tg-download-bot
 
 # ---------- 运行阶段 ----------
 FROM alpine:3.20
@@ -12,6 +12,6 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates rsync openssh-client sshpass tzdata
 ENV TZ=Asia/Shanghai
 WORKDIR /app
-COPY --from=builder /build/tg-media-bot /app/tg-media-bot
+COPY --from=builder /build/tg-download-bot /app/tg-download-bot
 VOLUME ["/app/data"]
-ENTRYPOINT ["/app/tg-media-bot"]
+ENTRYPOINT ["/app/tg-download-bot"]
