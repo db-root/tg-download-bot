@@ -103,6 +103,23 @@ docker tag bin12121/tg-download-bot:0.1.0 bin12121/tg-download-bot:latest
 - **配置**：`secrets.yaml` 的 `ssh_key: /root/.ssh/id_rsa`（容器内路径），或 targets 里按目标覆盖
 - ⚠️ **大坑**：开发机连服务器一直走本机 `~/.ssh/id_rsa` 密钥认证，`ssh_passwords` 里配的密码其实是**无效的**（密钥优先，密码从没被用过）→ 容器里没有密钥时密码认证必然失败，**rsync 推送静默不可用**。症状：`Permission denied`。修法：挂载密钥/配 ssh_key，不要依赖密码
 
+## dbroot 生产部署（增量更新原则）
+
+dbroot（<NAS_HOST>）`<DEPLOY_DIR>/tg-download-bot/` 是**正式上线环境**，已包含用户配置/密钥/data（session 登录态、历史、日志）。
+
+**更新版本时只增量，绝不覆盖配置与数据**：
+- ❌ 不推送/不覆盖：`config.yaml`、`secrets.yaml`、`data/`（含 session.db 登录态！覆盖会导致重新登录）
+- ✅ 只更新：镜像（`docker compose pull && docker compose up -d`，compose 里 image 指向 `bin12121/tg-download-bot:latest`，拉新镜像自动重建）
+- 文档（README/DEPLOY/DEVELOPMENT）可按需推送，不影响运行
+- 验证：`docker logs tg-download-bot | tail` 看到"bot 已启动"即正常
+
+## 已知坑：MESSAGE_EMPTY（/log 无反馈）
+
+**症状**：/log 命令收到消息但无任何回复；其他短命令（/tasks 等）正常。
+**根因**：Telegram 服务端对纯文本消息做 markdown 预处理。日志内容里的 `*`（如 `*tg.MessageMediaDocument`）、`_`、`` ` `` 未闭合 → 实体解析异常 → 服务端报 `rpc error 400: MESSAGE_EMPTY`（消息被判空），sendMsg 错误被静默吞掉。
+**修复**：`cleanLogLines` 把 `*`→`·`、`_`→`-`、`` ` ``→`'` 后再发送；sendMsg/editMsg 失败现在会 logf 错误（v0.1.1）。
+**教训**：所有 sendMsg 的错误都要记录，否则此类问题不可见。
+
 ## 安全红线
 
 - 仓库是 **public**：代码/文档**严禁出现**真实 IP、内网路径、密钥、token、密码
