@@ -698,9 +698,23 @@ func (b *Bot) cmdLog(chatID int64) error {
 		b.sendMsg(chatID, "📄 日志为空", nil)
 		return nil
 	}
-	msg := "📄 当天日志（末尾）：\n```\n" + strings.Join(lines, "\n") + "\n```"
+	msg := "📄 当天日志（末尾）：\n" + strings.Join(cleanLogLines(lines), "\n")
 	b.sendMsg(chatID, truncateMsg(msg), nil)
 	return nil
+}
+
+// cleanLogLines 清理日志行中的 markdown 特殊字符
+// Telegram 服务端会对纯文本做 markdown 解析，未闭合的 * / _ / ` 会导致
+// 实体解析异常，服务端报 MESSAGE_EMPTY（消息被判空）
+func cleanLogLines(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		l = strings.ReplaceAll(l, "*", "·")
+		l = strings.ReplaceAll(l, "_", "-")
+		l = strings.ReplaceAll(l, "`", "'")
+		out = append(out, l)
+	}
+	return out
 }
 
 func (b *Bot) cmdTasks(chatID int64) error {
@@ -856,7 +870,15 @@ func (b *Bot) sendMsg(chatID int64, text string, kbd tg.ReplyMarkupClass) (*type
 	if kbd != nil {
 		req.ReplyMarkup = kbd
 	}
-	return b.sharedCtx.SendMessage(chatID, req)
+	msg, err := b.sharedCtx.SendMessage(chatID, req)
+	if err != nil {
+		snippet := text
+		if len(snippet) > 120 {
+			snippet = snippet[:120]
+		}
+		b.logf("❌ sendMsg 失败 chat=%d: %v (消息: %q)", chatID, err, snippet)
+	}
+	return msg, err
 }
 
 // editMsg 编辑提示消息；失败则重发一条
@@ -866,6 +888,7 @@ func (b *Bot) editMsg(chatID int64, msgID int, text string, kbd tg.ReplyMarkupCl
 		req.ReplyMarkup = kbd
 	}
 	if _, err := b.sharedCtx.EditMessage(chatID, req); err != nil {
+		b.logf("❌ editMsg 失败 chat=%d msg=%d: %v（尝试重发）", chatID, msgID, err)
 		if sent, err2 := b.sendMsg(chatID, text, kbd); err2 == nil {
 			for _, t := range b.mgr.All() {
 				if t.ChatID == chatID && int(t.PromptMsgID) == msgID {
