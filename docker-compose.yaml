@@ -20,5 +20,7 @@ services:
       - ./secrets.yaml:/app/secrets.yaml:ro
       # 运行时数据：session/下载/日志/历史
       - ./data:/app/data
+      # SSH 密钥（rsync 推送用；未配置时回退密码认证，见 secrets.yaml）
+      - ./ssh:/root/.ssh:ro
     environment:
       - TZ=Asia/Shanghai

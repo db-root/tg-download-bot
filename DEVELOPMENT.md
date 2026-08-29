@@ -95,6 +95,14 @@ docker tag bin12121/tg-download-bot:0.1.0 bin12121/tg-download-bot:latest
 11. **data 自动清理**（启动时 + 每天一次，配置项 log_keep_days/history_keep/part_age_hours）：空文件夹壳、失败残留、超龄 .part、旧日志、历史裁剪；session.db 不清（删了要重登）
 12. **Docker 构建**：CGO_ENABLED=0（glebarez/sqlite 纯 Go）；.dockerignore 排除 data/config/secrets
 
+## rsync 推送链路（容器版）
+
+容器内 rsync → ssh（密钥认证）→ 远端目标（即使目标是宿主机自己也不用挂载目录，rsync 走 ssh 协议由远端进程写盘）。
+
+- **密钥来源**：`docker-compose.yaml` 挂载 `./ssh:/root/.ssh:ro`（部署目录下放 id_rsa + id_rsa.pub，权限 600；本地仓库的 `ssh/` 被 .gitignore 忽略，绝不提交）
+- **配置**：`secrets.yaml` 的 `ssh_key: /root/.ssh/id_rsa`（容器内路径），或 targets 里按目标覆盖
+- ⚠️ **大坑**：开发机连服务器一直走本机 `~/.ssh/id_rsa` 密钥认证，`ssh_passwords` 里配的密码其实是**无效的**（密钥优先，密码从没被用过）→ 容器里没有密钥时密码认证必然失败，**rsync 推送静默不可用**。症状：`Permission denied`。修法：挂载密钥/配 ssh_key，不要依赖密码
+
 ## 安全红线
 
 - 仓库是 **public**：代码/文档**严禁出现**真实 IP、内网路径、密钥、token、密码
