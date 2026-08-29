@@ -56,6 +56,50 @@ func (s *Store) Append(e Entry) error {
 func (s *Store) Recent(n int) ([]Entry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	entries, err := s.readAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(entries) > n {
+		entries = entries[len(entries)-n:]
+	}
+	return entries, nil
+}
+
+// Trim 保留最近 n 条（超出部分从文件头裁掉）；n<=0 或未超限时不动
+func (s *Store) Trim(n int) error {
+	if n <= 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := s.readAll()
+	if err != nil {
+		return err
+	}
+	if len(entries) <= n {
+		return nil
+	}
+	entries = entries[len(entries)-n:]
+	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, e := range entries {
+		data, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Write(append(data, '\n')); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// readAll 读取全部条目（调用方需持锁）
+func (s *Store) readAll() ([]Entry, error) {
 	f, err := os.Open(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -81,9 +125,6 @@ func (s *Store) Recent(n int) ([]Entry, error) {
 	}
 	if err := sc.Err(); err != nil {
 		return nil, err
-	}
-	if len(entries) > n {
-		entries = entries[len(entries)-n:]
 	}
 	return entries, nil
 }

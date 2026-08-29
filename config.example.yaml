@@ -15,28 +15,32 @@ bot:
   # 确认文件名的超时（分钟），超时用识别出的名字
   name_timeout_min: 5
   # 网络代理，留空=直连；支持 http:// https:// socks5://（可带认证 http://user:***@host:port）
-  proxy: "http://127.0.0.1:7890"
+  proxy: "http://你的代理IP:7890"  # 示例；留空=直连，支持 http/https/socks5
   # 文件日志（按天滚动，/log 命令读取），留空=仅控制台
   log_file: data/logs/tgmb.log
   # 下载历史文件（/history 命令读取）
   history_file: data/history.jsonl
+  # ---- 自动清理（启动时 + 每天一次；0=默认值）----
+  log_keep_days: 7        # 日志保留天数（默认 7 天）
+  history_keep: 500       # 历史保留条数（默认 500 条）
+  part_age_hours: 24      # 中断下载的 .part 残留超时小时（默认 24 小时）
 
 # 推送目标定义
 # type: local=本机移动  rsync=推到远端服务器（密码放 secrets.yaml 的 ssh_passwords，或配 ssh_key）
 targets:
   飞机:
     type: rsync
-    host: "192.168.1.100"
+    host: "你的服务器IP"  # 示例
     port: 22
     user: root
-    path: /path/to/your/搜索
+    path: /你的保存目录/搜索  # 示例
     ssh_key: ""
   电视剧:
     type: rsync
-    host: "192.168.1.100"
+    host: "你的服务器IP"  # 示例
     port: 22
     user: root
-    path: /path/to/your/电视剧
+    path: /你的保存目录/电视剧  # 示例
     ssh_key: ""
 
 # 路由规则已移除：所有任务都手动选择推送目标

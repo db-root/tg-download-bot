@@ -131,6 +131,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		b.client.Stop()
 	}()
 	b.setCommands()
+	b.runDailyCleanup() // 启动时先清理一轮
 	b.logf("bot 已启动，等待转发消息...")
 	return b.client.Idle()
 }
@@ -367,16 +368,34 @@ func (b *Bot) startDownload(t *task.Task) {
 	folderMode := len(items) > 1
 
 	b.mgr.SetStatus(t.ID, task.StatusDownloading)
-	dest := filepath.Join(b.cfg.Bot.DownloadDir, t.FinalName)
+	// 文件夹模式：文件夹名去掉媒体扩展名后缀（夹内文件保持原始文件名+后缀）
+	name := t.FinalName
 	if folderMode {
-		b.editMsg(t.ChatID, int(t.PromptMsgID), fmt.Sprintf("⏳ 开始下载 #%d：%s（%d 个文件 → 文件夹）", t.ID, t.FinalName, len(items)), nil)
+		if ext := filepath.Ext(name); ext != "" && knownExts[ext] {
+			name = strings.TrimSuffix(name, ext)
+		}
+	}
+	dest := filepath.Join(b.cfg.Bot.DownloadDir, name)
+	if folderMode {
+		b.editMsg(t.ChatID, int(t.PromptMsgID), fmt.Sprintf("⏳ 开始下载 #%d：%s（%d 个文件 → 文件夹）", t.ID, name, len(items)), nil)
 	} else {
-		b.editMsg(t.ChatID, int(t.PromptMsgID), fmt.Sprintf("⏳ 开始下载 #%d：%s", t.ID, t.FinalName), nil)
+		b.editMsg(t.ChatID, int(t.PromptMsgID), fmt.Sprintf("⏳ 开始下载 #%d：%s", t.ID, name), nil)
 	}
 
 	go func() {
+		start := time.Now()
 		b.mgr.Acquire()
 		defer b.mgr.Release()
+		// 结束后清理残留：成功时删空文件夹壳（rsync --remove-source-files 只删文件不删目录）
+		// 失败时删掉未推送出去的残留（.part 由定时清理兜底）
+		defer func() {
+			if folderMode {
+				_ = os.RemoveAll(dest)
+			} else {
+				_ = os.Remove(dest)
+				_ = os.Remove(dest + ".part")
+			}
+		}()
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(b.cfg.Bot.DownloadTimeoutMin)*time.Minute)
 		defer cancel()
@@ -420,7 +439,7 @@ func (b *Bot) startDownload(t *task.Task) {
 			b.failTask(t, fmt.Sprintf("目标 %q 不存在", t.Target))
 			return
 		}
-		destDesc, err := b.push(ctx, t.Target, target, dest, t.FinalName, folderMode)
+		destDesc, err := b.push(ctx, t.Target, target, dest, name, folderMode)
 		if err != nil {
 			b.failTask(t, fmt.Sprintf("推送失败：%v", err))
 			return
@@ -432,17 +451,18 @@ func (b *Bot) startDownload(t *task.Task) {
 			kindNote = fmt.Sprintf("📂 %d 个文件\n", len(items))
 		}
 		b.sendMsg(t.ChatID, fmt.Sprintf("✅ 任务 #%d 完成\n%s📦 %s\n💾 %s\n📍 已推送至：%s",
-			t.ID, kindNote, t.FinalName, humanSize(totalSize), destDesc), nil)
+			t.ID, kindNote, name, humanSize(totalSize), destDesc), nil)
 		_ = b.history.Append(history.Entry{
-			Time:   history.Now(),
-			TaskID: t.ID,
-			Name:   t.FinalName,
-			Size:   totalSize,
-			Target: t.Target,
-			Dest:   destDesc,
-			Status: "done",
+			Time:     history.Now(),
+			TaskID:   t.ID,
+			Name:     name,
+			Size:     totalSize,
+			Target:   t.Target,
+			Dest:     destDesc,
+			Status:   "done",
+			Duration: int64(time.Since(start).Seconds()),
 		})
-		b.logf("任务 #%d 完成: %s -> %s", t.ID, t.FinalName, destDesc)
+		b.logf("任务 #%d 完成: %s -> %s", t.ID, name, destDesc)
 	}()
 }
 
@@ -546,12 +566,18 @@ func (b *Bot) cancelTask(t *task.Task, reason string) {
 func (b *Bot) timeoutLoop(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+	lastCleanDay := ""
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			b.rotateLog()
+			// 每日一次自动清理（旧日志 / 超龄 .part / 历史裁剪）
+			if day := time.Now().Format("2006-01-02"); day != lastCleanDay {
+				lastCleanDay = day
+				b.runDailyCleanup()
+			}
 			for _, t := range b.mgr.ExpiredAwait() {
 				switch t.Status {
 				case task.StatusAwaitKind:
@@ -574,6 +600,62 @@ func (b *Bot) timeoutLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// ---------- 自动清理 ----------
+
+// runDailyCleanup 每日清理：旧日志 / 超龄 .part / 历史裁剪
+func (b *Bot) runDailyCleanup() {
+	b.cleanOldLogs()
+	b.cleanOldParts()
+	if err := b.history.Trim(b.cfg.Bot.HistoryKeep); err != nil {
+		b.logf("历史裁剪失败: %v", err)
+	}
+}
+
+// cleanOldLogs 删除超过保留天数的日志文件
+func (b *Bot) cleanOldLogs() {
+	if b.cfg.Bot.LogFile == "" {
+		return
+	}
+	dir := filepath.Dir(b.cfg.Bot.LogFile)
+	cutoff := time.Now().AddDate(0, 0, -b.cfg.Bot.LogKeepDays)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			path := filepath.Join(dir, e.Name())
+			if err := os.Remove(path); err == nil {
+				b.logf("自动清理旧日志: %s", path)
+			}
+		}
+	}
+}
+
+// cleanOldParts 删除超过超时小时数的 .part 残留文件
+func (b *Bot) cleanOldParts() {
+	age := time.Duration(b.cfg.Bot.PartAgeHours) * time.Hour
+	cutoff := time.Now().Add(-age)
+	filepath.Walk(b.cfg.Bot.DownloadDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(info.Name(), ".part") && info.ModTime().Before(cutoff) {
+			if err := os.Remove(path); err == nil {
+				b.logf("自动清理超龄 .part: %s", path)
+			}
+		}
+		return nil
+	})
 }
 
 // ---------- 命令处理 ----------
@@ -986,6 +1068,17 @@ func filterItems(items []*task.MediaItem, kind task.MediaKind) []*task.MediaItem
 		}
 	}
 	return out
+}
+
+// knownExts 常见媒体/文档扩展名：文件夹模式下这些后缀会从文件夹名去掉
+var knownExts = map[string]bool{
+	".mp4": true, ".mkv": true, ".avi": true, ".mov": true, ".wmv": true,
+	".flv": true, ".webm": true, ".m4v": true, ".ts": true, ".mpg": true, ".mpeg": true,
+	".mp3": true, ".flac": true, ".wav": true, ".aac": true, ".m4a": true, ".ogg": true,
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true, ".bmp": true, ".heic": true,
+	".pdf": true, ".zip": true, ".rar": true, ".7z": true, ".tar": true, ".gz": true,
+	".txt": true, ".srt": true, ".ass": true, ".doc": true, ".docx": true,
+	".xls": true, ".xlsx": true, ".ppt": true, ".pptx": true,
 }
 
 // itemFileName 文件夹模式下内部文件名

@@ -25,8 +25,11 @@ type Bot struct {
 	PathTimeoutMin         int    `yaml:"path_timeout_min"`
 	NameTimeoutMin         int    `yaml:"name_timeout_min"`
 	Proxy                  string `yaml:"proxy"`
-	LogFile                string `yaml:"log_file"`    // 文件日志（按天滚动），空=仅控制台
-	HistoryFile            string `yaml:"history_file"` // 下载历史文件
+	LogFile                string `yaml:"log_file"`     // 文件日志（按天滚动），空=仅控制台
+	HistoryFile            string `yaml:"history_file"`  // 下载历史文件
+	LogKeepDays            int    `yaml:"log_keep_days"` // 日志保留天数（0=默认7）
+	HistoryKeep            int    `yaml:"history_keep"`  // 历史保留条数（0=默认500）
+	PartAgeHours           int    `yaml:"part_age_hours"` // .part 残留超时小时（0=默认24）
 }
 
 // Target 推送目标
@@ -98,6 +101,15 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Bot.HistoryFile == "" {
 		c.Bot.HistoryFile = "data/history.jsonl"
+	}
+	if c.Bot.LogKeepDays <= 0 {
+		c.Bot.LogKeepDays = 7
+	}
+	if c.Bot.HistoryKeep <= 0 {
+		c.Bot.HistoryKeep = 500
+	}
+	if c.Bot.PartAgeHours <= 0 {
+		c.Bot.PartAgeHours = 24
 	}
 	if c.Rename.Fallback == "" {
 		c.Rename.Fallback = "date_prefix"

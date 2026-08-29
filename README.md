@@ -87,7 +87,25 @@ docker compose logs -f
 
 - 数据（session/下载/日志/历史）挂载在 `./data`
 - 配置只读挂载，改配置后 `docker compose restart`
+- 数据（session/下载/日志/历史）挂载在 `./data`
+- 配置只读挂载，改配置后 `docker compose restart`
 - 镜像已含 rsync/sshpass/ssh，远端推送开箱即用
+
+> ⚠️ **本地运行与 Docker 二选一**：两种方式都是 bot 长连接，同时跑会互相抢占消息（被踢下线）。用 Docker 前先停掉本地进程（`pkill -x tg-media-bot`）。
+
+## 自动清理（data 目录）
+
+程序启动时 + 每天自动执行一次，无需手动干预：
+
+| 内容 | 策略 |
+|---|---|
+| 推送后的空文件夹 | 完成后自动删除（rsync `--remove-source-files` 只删文件不删目录的补漏） |
+| 失败任务残留 | 未推送出去的文件/文件夹自动删除 |
+| 中断下载的 `.part` | 超过 `part_age_hours`（默认 24h）自动删除 |
+| 按天日志 | 超过 `log_keep_days`（默认 7 天）自动删除 |
+| 下载历史 | 超过 `history_keep`（默认 500 条）自动裁剪 |
+
+`session.db`（登录态）不会清理，删了需重新登录。
 
 ## 目录结构
 
@@ -102,7 +120,7 @@ internal/
   downloader/       MTProto 下载（文档/图片）
   history/          下载历史持久化
   proxy/            代理拨号（HTTP CONNECT / SOCKS5）
-Dockerfile / compose.yaml   容器部署
+Dockerfile / docker-compose.yaml   容器部署
 ```
 
 ## 已知边界
