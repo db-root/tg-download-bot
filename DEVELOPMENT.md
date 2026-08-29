@@ -1,0 +1,103 @@
+# tg-download-bot 开发文档
+
+面向开发者：架构、开发/正式切换流程、构建发布、踩坑记录。
+
+- 仓库：https://github.com/db-root/tg-download-bot
+- 镜像：`bin12121/tg-download-bot:latest`（Docker Hub）
+- 用户文档：见 `README.md`（使用）与 `DEPLOY.md`（部署）
+
+## 技术栈
+
+- Go 1.24+（本机 1.26 亦可编译；Docker 构建固定 golang:1.24-alpine）
+- `gotgproto v1.0.0-beta22`（封装 gotd/td，MTProto 客户端）
+- `glebarez/sqlite`（纯 Go SQLite，session 持久化，CGO_ENABLED=0 可编译）
+- `gopkg.in/yaml.v3`（配置加载）
+- Docker 运行镜像：alpine + rsync/sshpass/openssh-client/tzdata
+
+## 目录结构
+
+```
+cmd/tg-download-bot/   入口（flag: -config 指定配置路径）
+internal/
+  bot/                bot 接入 + 交互流程 + 任务流转 + 命令 + 自动清理
+  task/               任务状态机（Extracting→AwaitKind→AwaitPath→AwaitName→Downloading→Pushing→Done/Failed/Cancelled）、并发信号量、相册聚合
+  naming/             命名引擎（caption 指令 > caption 模式 > 文件名清洗 > 日期兜底）
+  router/             目标查询 + default_target 兜底
+  downloader/         MTProto 下载（文档 InputDocumentFileLocation / 图片 InputPhotoFileLocation）
+  history/            下载历史 jsonl 持久化（追加写 + Trim 裁剪）
+  proxy/              HTTP CONNECT 手写 + SOCKS5（x/net/proxy）
+  config/             config.yaml + secrets.yaml 双文件加载（secrets 独立防误提交）
+```
+
+## 开发 / 正式切换流程（重要）
+
+本机开发用本地编译二进制，正式运行用 Docker Compose（同一份 `config.yaml` / `secrets.yaml` / `data/`，session 登录态共用，互不冲突）。
+
+```bash
+# ── 开发验证（迭代时）──
+docker compose down        # 1. 停正式版容器
+./tg-download-bot          # 2. 跑本地编译的开发版（改代码后先 go build）
+# ...验证新功能，日志 /tmp/tgmb.log + data/logs/...
+
+# ── 验证完回到正式版 ──
+# 1. 停掉本地进程（Ctrl+C 或 kill $(pgrep -x tg-download-bot)）
+# 2. 回到正式
+docker compose up -d       # 拉 bin12121/tg-download-bot:latest 启动
+```
+
+> ⚠️ 本地进程与容器**不能同时跑**（两条 MTProto 长连接互抢消息，被踢下线）。
+
+改配置：编辑 `config.yaml` / `secrets.yaml` → `docker compose restart`（容器只读挂载）。
+
+## 构建
+
+```bash
+# 本地编译（开发用）
+go build -o tg-download-bot ./cmd/tg-download-bot
+
+# Docker 镜像（发布用，需能访问镜像源）
+docker build -t bin12121/tg-download-bot:0.1.0 .
+docker tag bin12121/tg-download-bot:0.1.0 bin12121/tg-download-bot:latest
+```
+
+## 发布流程（发版清单）
+
+1. 代码验证通过（本地开发流程）
+2. `git add -A && git commit`（等用户确认提交习惯）
+3. 打 tag：`git tag v0.1.0 && git push origin v0.1.0`
+4. 构建镜像 + 推 Docker Hub：
+   ```bash
+   docker build -t bin12121/tg-download-bot:<版本> .
+   docker tag bin12121/tg-download-bot:<版本> bin12121/tg-download-bot:latest
+   docker push bin12121/tg-download-bot:<版本>
+   docker push bin12121/tg-download-bot:latest
+   ```
+5. 同步 `release/v0.1.0/` 交付物（tar.gz 重新 `docker save` 导出）
+6. 同步 README.md / DEPLOY.md / DEVELOPMENT.md 中的版本与链接
+7. 切回正式版容器：`docker compose up -d`
+
+## 关键架构决策 / 踩坑记录
+
+1. **20MB 限制**：HTTP Bot API 下载上限 20MB → 必须 MTProto（gotd/td）。需要 api_id+api_hash+bot_token 三件套（my.telegram.org 需纯净境外 IP，见 DEPLOY.md）
+2. **gotgproto v1.0.0-beta22 API**：
+   - `gotgproto.ClientTypeBot(token)`（不是 ClientType{BotToken}）
+   - `ClientOpts.Session = sessionMaker.SqlSession(sqlite.Open(path))`（data 目录必须先建，否则 sqlite 报 out of memory(14)）
+   - handler：`client.Dispatcher.AddHandler(handlers.NewAnyUpdate(fn))`；消息在 `update.EffectiveMessage`
+   - goroutine 里发消息用 `client.CreateContext()` 复用（sharedCtx.SendMessage/EditMessage）
+3. **回调数据解析**：按钮 data `t:1:name:ok` 按 `:` 分割，注意 case 匹配层级（parts[2]=action，parts[3]=子操作）
+4. **tg v0.132 Peer 无 AccessHash**：AccessHash 只在 InputPeer 里 → 用 gotgproto chatID 直传，不构造 InputPeer
+5. **downloader API**：`d.Download(api, loc).WithThreads(4).ToPath(ctx, dest)`（不是旧版 Stream）
+6. **代理**：MTProto TCP 长连接不吃 HTTP_PROXY 环境变量 → `ClientOpts.Resolver = dcs.Plain(PlainOptions{Dial: 代理拨号})`；HTTP 代理手写 CONNECT（bufio.ReadResponse），SOCKS5 用 x/net/proxy
+7. **rsync 密码认证**：rsync 不支持密码参数 → `sshpass -p` 包装；ssh 加 `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null`；推送用 `--remove-source-files`（只删文件不删目录 → 任务结束自动删空文件夹壳）
+8. **相册聚合**：GroupedID != 0 挂起 2s 聚齐再建任务（timer goroutine 无 ext.Context → 统一 sharedCtx）
+9. **BotsSetBotCommands** 注册中文命令菜单（客户端缓存，重开聊天/重启客户端才显示）
+10. **按天日志**：log 包输出控制台 + 自写文件（rotateLog 按天切换）；/log 命令读当天文件末尾
+11. **data 自动清理**（启动时 + 每天一次，配置项 log_keep_days/history_keep/part_age_hours）：空文件夹壳、失败残留、超龄 .part、旧日志、历史裁剪；session.db 不清（删了要重登）
+12. **Docker 构建**：CGO_ENABLED=0（glebarez/sqlite 纯 Go）；.dockerignore 排除 data/config/secrets
+
+## 安全红线
+
+- 仓库是 **public**：代码/文档**严禁出现**真实 IP、内网路径、密钥、token、密码
+- `secrets.yaml` / `config.yaml`（本地实际值）git 忽略，永不提交
+- 示例文件（config.example.yaml / secrets.example.yaml）只放示例值
+- git 历史重写过敏感信息（filter-branch），**不要再把真实值提交进历史**
