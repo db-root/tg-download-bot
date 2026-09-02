@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -25,10 +26,10 @@ type Bot struct {
 	PathTimeoutMin         int    `yaml:"path_timeout_min"`
 	NameTimeoutMin         int    `yaml:"name_timeout_min"`
 	Proxy                  string `yaml:"proxy"`
-	LogFile                string `yaml:"log_file"`     // 文件日志（按天滚动），空=仅控制台
-	HistoryFile            string `yaml:"history_file"`  // 下载历史文件
-	LogKeepDays            int    `yaml:"log_keep_days"` // 日志保留天数（0=默认7）
-	HistoryKeep            int    `yaml:"history_keep"`  // 历史保留条数（0=默认500）
+	LogFile                string `yaml:"log_file"`       // 文件日志（按天滚动），空=仅控制台
+	HistoryFile            string `yaml:"history_file"`   // 下载历史文件
+	LogKeepDays            int    `yaml:"log_keep_days"`  // 日志保留天数（0=默认7）
+	HistoryKeep            int    `yaml:"history_keep"`   // 历史保留条数（0=默认500）
 	PartAgeHours           int    `yaml:"part_age_hours"` // .part 残留超时小时（0=默认24）
 }
 
@@ -58,11 +59,11 @@ type Rename struct {
 
 // Config 主配置
 type Config struct {
-	Bot           Bot              `yaml:"bot"`
+	Bot           Bot               `yaml:"bot"`
 	Targets       map[string]Target `yaml:"targets"`
-	DefaultTarget string           `yaml:"default_target"`
-	Rename        Rename           `yaml:"rename"`
-	Secrets       Secrets          `yaml:"-"`
+	DefaultTarget string            `yaml:"default_target"`
+	Rename        Rename            `yaml:"rename"`
+	Secrets       Secrets           `yaml:"-"`
 }
 
 // Load 加载 config.yaml + secrets.yaml（secrets 单独读，避免误提交）
@@ -116,12 +117,13 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// TargetNames 返回所有目标名（有序）
+// TargetNames 返回所有目标名（排序保证键盘顺序稳定）
 func (c *Config) TargetNames() []string {
 	names := make([]string, 0, len(c.Targets))
 	for name := range c.Targets {
 		names = append(names, name)
 	}
+	sort.Strings(names)
 	return names
 }
 

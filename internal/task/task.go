@@ -9,15 +9,15 @@ import (
 type Status int
 
 const (
-	StatusExtracting Status = iota // 提取媒体信息中
-	StatusAwaitKind                // 等待选择下载类型（视频/图片/全部）
-	StatusAwaitPath                // 等待用户选择推送路径
-	StatusAwaitName                // 等待用户确认/修改文件名
-	StatusDownloading              // 下载中
-	StatusPushing                  // 推送中（移动/rsync）
-	StatusDone                     // 完成
-	StatusFailed                   // 失败
-	StatusCancelled                // 已取消
+	StatusExtracting  Status = iota // 提取媒体信息中
+	StatusAwaitKind                 // 等待选择下载类型（视频/图片/全部）
+	StatusAwaitPath                 // 等待用户选择推送路径
+	StatusAwaitName                 // 等待用户确认/修改文件名
+	StatusDownloading               // 下载中
+	StatusPushing                   // 推送中（移动/rsync）
+	StatusDone                      // 完成
+	StatusFailed                    // 失败
+	StatusCancelled                 // 已取消
 )
 
 func (s Status) String() string {
@@ -50,7 +50,9 @@ type MediaKind string
 const (
 	KindVideo MediaKind = "video"
 	KindPhoto MediaKind = "photo"
-	KindFile  MediaKind = "file"
+	KindComic MediaKind = "comic" // 漫画文件（cbz/cbr/cb7/cbt...）
+	KindEbook MediaKind = "ebook" // 电子书（epub/mobi/azw3/fb2/txt...）
+	KindFile  MediaKind = "file"  // 其他文件
 )
 
 // MediaItem 单个媒体文件

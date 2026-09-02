@@ -42,6 +42,20 @@ targets:
     user: root
     path: /你的保存目录/电视剧  # 示例
     ssh_key: ""
+  漫画:
+    type: rsync
+    host: "你的服务器IP"  # 示例
+    port: 22
+    user: root
+    path: /你的保存目录/漫画  # 示例：漫画（cbz/cbr/图片相册）推到这里
+    ssh_key: ""
+  电子书:
+    type: rsync
+    host: "你的服务器IP"  # 示例
+    port: 22
+    user: root
+    path: /你的保存目录/电子书  # 示例：电子书（epub/mobi/txt）推到这里
+    ssh_key: ""
 
 # 路由规则已移除：所有任务都手动选择推送目标
 # 路径选择超时后自动推送到的目标（兜底）

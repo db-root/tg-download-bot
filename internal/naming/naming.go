@@ -201,9 +201,23 @@ func (e *Engine) clean(s string) string {
 func (e *Engine) fallbackName(rawName, ext string) string {
 	base := e.clean(rawName)
 	if base == "" {
-		base = "video"
+		base = defaultBase(ext)
 	}
 	return time.Now().Format("2006-01-02") + "_" + base
+}
+
+// defaultBase 无原始文件名时的默认主名（按扩展名给个像样的词）
+func defaultBase(ext string) string {
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic":
+		return "photo"
+	case ".mp3", ".flac", ".wav", ".aac", ".m4a", ".ogg":
+		return "audio"
+	case ".mp4", ".mkv", ".avi", ".mov", ".webm", ".ts", ".m4v":
+		return "video"
+	default:
+		return "file"
+	}
 }
 
 // SplitExt 把文件名拆成 (去掉扩展名的主名, 扩展名)

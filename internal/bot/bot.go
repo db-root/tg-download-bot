@@ -44,9 +44,9 @@ type Bot struct {
 	history   *history.Store
 
 	// 文件日志（按天）
-	logMu    sync.Mutex
-	logFile  *os.File
-	logDay   string
+	logMu   sync.Mutex
+	logFile *os.File
+	logDay  string
 
 	// 相册聚合 GroupedID -> 聚合
 	albumMu sync.Mutex
@@ -193,7 +193,7 @@ func (b *Bot) handleMessage(ctx *ext.Context, update *ext.Update) error {
 	// 单条媒体
 	items := extractItems(msg.Message)
 	if len(items) == 0 {
-		b.sendMsg(chatID, "❌ 请转发视频/图片/文件给我", nil)
+		b.sendMsg(chatID, "❌ 请转发视频/图片/漫画/电子书/文件给我", nil)
 		return nil
 	}
 	b.createTask(chatID, int64(msg.ID), &task.Media{Items: items, Caption: msg.Text})
@@ -250,8 +250,8 @@ func (b *Bot) createTask(chatID, triggerMsgID int64, media *task.Media) {
 	t := b.mgr.Create(chatID, triggerMsgID)
 	b.mgr.Update(t.ID, func(tt *task.Task) { tt.Media = media })
 
-	// 命名识别
-	res := b.namer.Rename(media.Caption, firstRawName(media), "")
+	// 命名识别（扩展名取第一个媒体项的；无文件名/未知 mime 时 naming 内部再兑底）
+	res := b.namer.Rename(media.Caption, firstRawName(media), firstExt(media))
 	b.mgr.Update(t.ID, func(tt *task.Task) {
 		tt.DetectedName = res.Name
 		tt.FinalName = res.Name
@@ -680,7 +680,7 @@ func (b *Bot) handleCommand(chatID int64, text string) error {
 	case "cleanup":
 		return b.cmdCleanup(chatID)
 	case "start", "help":
-		b.sendMsg(chatID, "📥 转发视频/图片/文件给我即可自动下载\n\n命令：\n/log 查看当天日志\n/tasks 下载中任务\n/all_tasks 全部任务\n/history 下载历史\n/clear_history 清空历史\n/cleanup 清理缓存", nil)
+		b.sendMsg(chatID, "📥 转发媒体给我即可自动下载\n支持：视频 / 图片相册 / 漫画(cbz等) / 电子书(epub/mobi/txt等) / 文件\n\n命令：\n/log 查看当天日志\n/tasks 下载中任务\n/all_tasks 全部任务\n/history 下载历史\n/clear_history 清空历史\n/cleanup 清理缓存", nil)
 	}
 	return nil
 }
@@ -799,8 +799,8 @@ func (b *Bot) cmdCleanup(chatID int64) error {
 // setCommands 注册中文命令菜单
 func (b *Bot) setCommands() {
 	req := &tg.BotsSetBotCommandsRequest{
-		Scope:     &tg.BotCommandScopeDefault{},
-		LangCode:  "zh",
+		Scope:    &tg.BotCommandScopeDefault{},
+		LangCode: "zh",
 		Commands: []tg.BotCommand{
 			{Command: "log", Description: "查看日志（当天）"},
 			{Command: "tasks", Description: "下载中任务"},
@@ -1064,6 +1064,33 @@ func kindOfDoc(doc *tg.Document) task.MediaKind {
 	if strings.HasPrefix(doc.MimeType, "video/") {
 		return task.KindVideo
 	}
+	// 漫画 / 电子书：按文件名扩展名 + mime 识别
+	// （pdf 双身份：漫画和电子书都常见，保持中性 kind=file，去向由用户选目标决定）
+	name := ""
+	for _, attr := range doc.Attributes {
+		if f, ok := attr.(*tg.DocumentAttributeFilename); ok {
+			name = strings.ToLower(f.FileName)
+			break
+		}
+	}
+	mime := strings.ToLower(doc.MimeType)
+	for _, ext := range []string{".cbz", ".cbr", ".cb7", ".cbt", ".cba"} {
+		if strings.HasSuffix(name, ext) {
+			return task.KindComic
+		}
+	}
+	if strings.Contains(mime, "comicbook") || strings.Contains(mime, "x-cbr") || strings.Contains(mime, "x-cbz") {
+		return task.KindComic
+	}
+	for _, ext := range []string{".epub", ".mobi", ".azw", ".azw3", ".azw4", ".fb2", ".djvu", ".txt"} {
+		if strings.HasSuffix(name, ext) {
+			return task.KindEbook
+		}
+	}
+	if strings.Contains(mime, "epub") || strings.Contains(mime, "mobipocket") || strings.Contains(mime, "mobi8") ||
+		strings.Contains(mime, "fictionbook") || strings.HasPrefix(mime, "text/plain") || strings.Contains(mime, "vnd.djvu") {
+		return task.KindEbook
+	}
 	return task.KindFile
 }
 
@@ -1124,6 +1151,16 @@ func firstRawName(media *task.Media) string {
 	return ""
 }
 
+// firstExt 第一个媒体项的扩展名（photo=.jpg；doc=文件名推断或 mime 映射）
+func firstExt(media *task.Media) string {
+	for _, it := range media.Items {
+		if it.Ext != "" {
+			return it.Ext
+		}
+	}
+	return ""
+}
+
 func describeMedia(counts map[task.MediaKind]int) string {
 	var parts []string
 	if v := counts[task.KindVideo]; v > 0 {
@@ -1131,6 +1168,12 @@ func describeMedia(counts map[task.MediaKind]int) string {
 	}
 	if p := counts[task.KindPhoto]; p > 0 {
 		parts = append(parts, fmt.Sprintf("🖼 图片 %d 张", p))
+	}
+	if c := counts[task.KindComic]; c > 0 {
+		parts = append(parts, fmt.Sprintf("📖 漫画 %d 个", c))
+	}
+	if e := counts[task.KindEbook]; e > 0 {
+		parts = append(parts, fmt.Sprintf("📚 电子书 %d 个", e))
 	}
 	if f := counts[task.KindFile]; f > 0 {
 		parts = append(parts, fmt.Sprintf("📄 文件 %d 个", f))
@@ -1144,6 +1187,10 @@ func kindLabel(k task.MediaKind) string {
 		return "🎬 仅视频"
 	case task.KindPhoto:
 		return "🖼 仅图片"
+	case task.KindComic:
+		return "📖 仅漫画"
+	case task.KindEbook:
+		return "📚 仅电子书"
 	default:
 		return "📦 全部下载"
 	}
@@ -1194,12 +1241,24 @@ func guessExt(mime string) string {
 		return ".pdf"
 	case "application/zip":
 		return ".zip"
+	case "application/epub+zip":
+		return ".epub"
+	case "application/x-mobipocket-ebook", "application/x-mobi8-ebook":
+		return ".mobi"
+	case "application/vnd.comicbook+zip", "application/x-cbz", "application/x-cbr":
+		return ".cbz"
+	case "text/plain":
+		return ".txt"
 	case "image/jpeg":
 		return ".jpg"
 	case "image/png":
 		return ".png"
+	case "image/gif":
+		return ".gif"
+	case "image/webp":
+		return ".webp"
 	default:
-		return ".mp4"
+		return "" // 未知 mime：不硬猜，后续命名引擎会兑底
 	}
 }
 
@@ -1238,4 +1297,3 @@ func maskProxy(p string) string {
 	u.User = url.User(u.User.Username())
 	return u.String()
 }
-
