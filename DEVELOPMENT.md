@@ -105,13 +105,40 @@ docker tag bin12121/tg-download-bot:0.1.0 bin12121/tg-download-bot:latest
 
 ## dbroot 生产部署（增量更新原则）
 
-dbroot（<NAS_HOST>）`<DEPLOY_DIR>/tg-download-bot/` 是**正式上线环境**，已包含用户配置/密钥/data（session 登录态、历史、日志）。
+dbroot（`<NAS_HOST>`，部署目录 `<DEPLOY_DIR>/tg-download-bot/`）是**正式上线环境**，已包含用户配置/密钥/data（session 登录态、历史、日志）。
 
 **更新版本时只增量，绝不覆盖配置与数据**：
 - ❌ 不推送/不覆盖：`config.yaml`、`secrets.yaml`、`data/`（含 session.db 登录态！覆盖会导致重新登录）
 - ✅ 只更新：镜像（`docker compose pull && docker compose up -d`，compose 里 image 指向 `bin12121/tg-download-bot:latest`，拉新镜像自动重建）
 - 文档（README/DEPLOY/DEVELOPMENT）可按需推送，不影响运行
 - 验证：`docker logs tg-download-bot | tail` 看到"bot 已启动"即正常
+
+## 配置文件同步（本地开发 ↔ 生产，只增量不覆盖）
+
+本地开发目录的 `config.yaml` 与生产部署目录的 `config.yaml` **各自独立维护，曾发生分叉**（生产后来加过 target、改过路径，本地不知道）。
+
+**权威基准 = 生产运行中的 config.yaml**（用户实际在用的配置）。
+
+### 同步流程（配置变更 / 发版前检查）
+
+1. **拉生产配置到本地做对比**：
+   ```bash
+   scp root@<NAS_HOST>:<DEPLOY_DIR>/config.yaml /tmp/tgb-prod-current.yaml
+   diff config.yaml /tmp/tgb-prod-current.yaml   # 看分叉
+   ```
+2. **列差异给用户确认**：分三类——① 生产有本地缺（新增 target）② 路径不一致（以生产为准，验证目录存在：`ssh ... "ls -d <path>"`）③ 一致不用动。
+3. **用户确认后只在差异项上增量修改本地**（补 target 块 / 改 path），**绝不整体覆盖**。
+4. **校验**：YAML 解析通过 + `diff`（去注释）与生产一致。
+5. 若反向（生产需要改）：先在远端 `cp config.yaml config.yaml.bak-<版本>` 备份，再增量改，校验后 `docker compose restart`。
+
+### secrets.yaml
+
+- 生产/本地结构一致（api_id/api_hash/bot_token/ssh_key）；只在生产维护实际值，本地可留同结构副本
+- **永不进 git、永不进发布产物**；对比时只看键结构不看值
+
+### 下次发版时
+
+本地 config 与生产对齐后：发版流程照常（镜像+文档），配置若本轮没变更就**不推**；有变更就按上面 1→4 步增量同步，同步完再重启容器。配置文件变更建议顺带更新 `config.example.yaml`（进 git 的模板）保持一致。
 
 ## 已知坑：MESSAGE_EMPTY（/log 无反馈）
 
